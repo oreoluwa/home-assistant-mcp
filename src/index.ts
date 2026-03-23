@@ -13,6 +13,9 @@ import { toolHandlers } from './handlers.js';
 // Get configuration from environment
 const HA_AGENT_URL = process.env.HA_AGENT_URL || 'http://homeassistant.local:8099';
 const HA_AGENT_KEY = process.env.HA_AGENT_KEY;
+const HA_INSTANCES: string[] = process.env.HA_INSTANCES
+  ? JSON.parse(process.env.HA_INSTANCES)
+  : ['main'];
 
 if (!HA_AGENT_KEY) {
   // Always log errors - these are critical
@@ -41,9 +44,26 @@ const server = new Server(
   }
 );
 
+// select_ha_instance tool definition
+const selectInstanceTool = {
+  name: 'select_ha_instance',
+  description: 'Switch the active Home Assistant instance for this session. Call this before other tools to target a specific HA instance.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      instance: {
+        type: 'string',
+        enum: HA_INSTANCES,
+        description: 'The HA instance name to activate',
+      },
+    },
+    required: ['instance'],
+  },
+};
+
 // Register tool list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools };
+  return { tools: [selectInstanceTool, ...tools] };
 });
 
 // Register tool execution handler
@@ -58,6 +78,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   try {
+    // Built-in: switch active HA instance
+    if (name === 'select_ha_instance') {
+      const instance = (args as any).instance as string;
+      if (!HA_INSTANCES.includes(instance)) {
+        throw new Error(`Unknown instance: ${instance}. Available: ${HA_INSTANCES.join(', ')}`);
+      }
+      haClient.setInstance(instance);
+      return { content: [{ type: 'text', text: `Switched to Home Assistant instance: ${instance}` }] };
+    }
+
     // Look up handler from registry
     const handler = toolHandlers[name];
     

@@ -23,8 +23,10 @@ export interface HAClientConfig {
 
 export class HAClient {
   private client: AxiosInstance;
+  public currentInstance: string;
 
   constructor(config: HAClientConfig) {
+    this.currentInstance = 'main';
     this.client = axios.create({
       baseURL: config.baseURL,
       headers: {
@@ -36,6 +38,17 @@ export class HAClient {
       // Increased to 90s to better support heavy operations like list_automations
       timeout: 90000,
     });
+
+    // Inject X-HA-Instance header on every request for multi-instance routing
+    this.client.interceptors.request.use((config) => {
+      config.headers['X-HA-Instance'] = this.currentInstance;
+      return config;
+    });
+  }
+
+  /** Switch the active Home Assistant instance for all subsequent requests. */
+  setInstance(name: string): void {
+    this.currentInstance = name;
   }
 
   // Files API
